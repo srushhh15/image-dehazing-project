@@ -1,0 +1,10 @@
+torch
+torchvision
+opencv-python
+numpy
+pillow
+pywavelets
+timm
+pytorch-msssim
+matplotlib
+tqdm
