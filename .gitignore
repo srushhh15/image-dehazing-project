@@ -1,5 +1,7 @@
-data/
+venv/
 __pycache__/
-*.pt
 *.pth
-.ipynb_checkpoints/
+outputs/
+comparisons/
+data/
+*.pyc

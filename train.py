@@ -1,19 +1,31 @@
 import torch
 from torch.utils.data import DataLoader, Subset
-from torch import nn, optim
+from torch import optim
+import torch.nn.functional as F
+from pytorch_msssim import ssim
 
-from models.unet import UNet
+from models.improved_unet import ImprovedUNet
 from utils.dataset import DehazeDataset
 
 
-# Device (CPU/GPU)
+# Device selection
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Using device:", device)
 
 
+# Hybrid Loss Function (L1 + SSIM)
+def loss_function(pred, target):
+
+    l1 = F.l1_loss(pred, target)
+
+    ssim_loss = 1 - ssim(pred, target, data_range=1, size_average=True)
+
+    return l1 + 0.5 * ssim_loss
+
+
 def main():
 
-    # Load full dataset
+    # Load dataset
     full_dataset = DehazeDataset(
         "data/reside/hazy",
         "data/reside/clean"
@@ -21,10 +33,9 @@ def main():
 
     print("Total images:", len(full_dataset))
 
-    # Use only first 20 images for debugging
+    # Debug training: only first 20 images
     dataset = Subset(full_dataset, list(range(20)))
 
-    # DataLoader (Windows-safe)
     loader = DataLoader(
         dataset,
         batch_size=4,
@@ -32,15 +43,23 @@ def main():
         num_workers=0
     )
 
-    # Model
-    model = UNet().to(device)
+    # Initialize model
+    model = ImprovedUNet().to(device)
 
-    # Loss and optimizer
-    loss_fn = nn.L1Loss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    # Optimizer
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=1e-4
+    )
 
-    # Training loop (small epochs for debug)
-    epochs = 2
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=5,
+        gamma=0.5
+    )
+
+    epochs = 10
 
     for epoch in range(epochs):
 
@@ -52,13 +71,19 @@ def main():
             hazy = hazy.to(device)
             clean = clean.to(device)
 
-            # Forward
+            # Forward pass
             output = model(hazy)
-            loss = loss_fn(output, clean)
 
-            # Backward
+            # Compute loss
+            loss = loss_function(output, clean)
+
+            # Backpropagation
             optimizer.zero_grad()
             loss.backward()
+
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
             optimizer.step()
 
             total_loss += loss.item()
@@ -74,9 +99,12 @@ def main():
         print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
         print("-" * 50)
 
-    # Save model
-    torch.save(model.state_dict(), "baseline_unet_debug.pth")
-    print("Model saved as baseline_unet_debug.pth")
+        scheduler.step()
+
+    # Save trained model
+    torch.save(model.state_dict(), "improved_unet_attention_debug.pth")
+
+    print("Model saved as improved_unet_attention_debug.pth")
 
 
 if __name__ == "__main__":

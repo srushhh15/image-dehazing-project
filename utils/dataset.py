@@ -16,9 +16,16 @@ class DehazeDataset(Dataset):
         ])
 
         self.transform = T.Compose([
-            T.Resize((size, size)),
-            T.ToTensor()
-        ])
+    T.Resize((256,256)),
+    T.RandomHorizontalFlip(),
+    T.RandomVerticalFlip(),
+    T.ColorJitter(
+        brightness=0.2,
+        contrast=0.2,
+        saturation=0.2
+    ),
+    T.ToTensor()
+])
 
     def __len__(self):
         return len(self.hazy_images)
