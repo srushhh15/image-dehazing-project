@@ -3,7 +3,8 @@ import torch
 from PIL import Image
 import torchvision.transforms as T
 
-from models.improved_unet import ImprovedUNet
+
+from models.cnn_dehaze import CNNDehaze
 
 
 # Device selection
@@ -14,11 +15,10 @@ print("Using device:", device)
 def main():
 
     # Load trained model
-    model = ImprovedUNet().to(device)
+    model = CNNDehaze().to(device)
 
-    model.load_state_dict(
-        torch.load("improved_unet_attention_debug.pth", map_location=device)
-    )
+    state_dict = torch.load("cnn_dehaze.pth", map_location=device)
+    model.load_state_dict(state_dict)
 
     model.eval()
 

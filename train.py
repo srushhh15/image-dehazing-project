@@ -4,7 +4,7 @@ from torch import optim
 import torch.nn.functional as F
 from pytorch_msssim import ssim
 
-from models.improved_unet import ImprovedUNet
+from models.cnn_dehaze import CNNDehaze
 from utils.dataset import DehazeDataset
 
 
@@ -44,7 +44,7 @@ def main():
     )
 
     # Initialize model
-    model = ImprovedUNet().to(device)
+    model = CNNDehaze().to(device)
 
     # Optimizer
     optimizer = optim.Adam(
@@ -102,9 +102,11 @@ def main():
         scheduler.step()
 
     # Save trained model
-    torch.save(model.state_dict(), "improved_unet_attention_debug.pth")
+    torch.save(model.state_dict(), "cnn_dehaze.pth")
 
-    print("Model saved as improved_unet_attention_debug.pth")
+
+
+    print("Model saved as cnn_dehaze.pth")
 
 
 if __name__ == "__main__":
