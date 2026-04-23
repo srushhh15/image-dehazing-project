@@ -1,68 +1,43 @@
-import os
 import torch
+from torchvision import transforms
 from PIL import Image
-import torchvision.transforms as T
+import os
 
+from models.cnn_dehaze import EnhancedCNNDehaze
 
-from models.cnn_dehaze import CNNDehaze
-
-
-# Device selection
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print("Using device:", device)
 
+model = EnhancedCNNDehaze().to(device)
+model.load_state_dict(torch.load("best_model.pth", map_location=device))
+model.eval()
 
-def main():
+transform = transforms.Compose([
+    transforms.Resize((256,256)),
+    transforms.ToTensor()
+])
 
-    # Load trained model
-    model = CNNDehaze().to(device)
+input_folder = "data/reside/hazy/"
+output_folder = "outputs/"
 
-    state_dict = torch.load("cnn_dehaze.pth", map_location=device)
-    model.load_state_dict(state_dict)
+os.makedirs(output_folder, exist_ok=True)
 
-    model.eval()
+files = os.listdir(input_folder)[:10]
 
-    # Dataset paths
-    hazy_dir = "data/reside/hazy"
-    output_dir = "outputs"
+for i, name in enumerate(files):
 
-    # Create output folder
-    os.makedirs(output_dir, exist_ok=True)
+    print(f"Processing {i+1}/10")
 
-    # Image transform
-    transform = T.Compose([
-        T.Resize((256, 256)),
-        T.ToTensor()
-    ])
+    img = Image.open(os.path.join(input_folder, name)).convert("RGB")
 
-    # Test only first 20 images
-    files = sorted(os.listdir(hazy_dir))[:20]
+    x = transform(img).unsqueeze(0).to(device)
 
-    for name in files:
+    with torch.no_grad():
+        y = model(x)
 
-        path = os.path.join(hazy_dir, name)
+    y = y.squeeze(0).cpu()
 
-        # Load image
-        img = Image.open(path).convert("RGB")
+    out = transforms.ToPILImage()(y)
 
-        # Preprocess
-        x = transform(img).unsqueeze(0).to(device)
+    out.save(os.path.join(output_folder, name))
 
-        # Predict
-        with torch.no_grad():
-            pred = model(x)
-
-        # Convert tensor to image
-        pred = pred.squeeze(0).cpu().clamp(0, 1)
-
-        output_img = T.ToPILImage()(pred)
-
-        save_path = os.path.join(output_dir, name)
-
-        output_img.save(save_path)
-
-        print("Saved:", save_path)
-
-
-if __name__ == "__main__":
-    main()
+print("Outputs saved.")

@@ -1,39 +1,31 @@
-import os
 from PIL import Image
+import os
 
-hazy_dir = "data/reside/hazy"
-clean_dir = "data/reside/clean"
-pred_dir = "outputs"
+hazy_folder = "data/reside/hazy/"
+clean_folder = "data/reside/clean/"
+output_folder = "outputs/"
+compare_folder = "comparisons/"
 
-save_dir = "comparisons"
-os.makedirs(save_dir, exist_ok=True)
+os.makedirs(compare_folder, exist_ok=True)
 
-files = sorted(os.listdir(pred_dir))[:10]
+files = os.listdir(output_folder)
 
-for name in files:
+for i, name in enumerate(files):
 
-    # predicted image
-    pred = Image.open(os.path.join(pred_dir, name))
+    print(f"Creating {i+1}/{len(files)}")
 
-    # hazy image
-    hazy = Image.open(os.path.join(hazy_dir, name))
-
-    # find clean image
     clean_name = name.split("_")[0] + ".png"
-    clean = Image.open(os.path.join(clean_dir, clean_name))
 
-    # resize
-    hazy = hazy.resize((256,256))
-    clean = clean.resize((256,256))
+    hazy = Image.open(os.path.join(hazy_folder, name)).resize((256,256))
+    output = Image.open(os.path.join(output_folder, name)).resize((256,256))
+    clean = Image.open(os.path.join(clean_folder, clean_name)).resize((256,256))
 
-    # create comparison image
-    w, h = hazy.size
-    canvas = Image.new("RGB", (w*3, h))
+    canvas = Image.new("RGB", (768,256))
 
     canvas.paste(hazy, (0,0))
-    canvas.paste(pred, (w,0))
-    canvas.paste(clean, (w*2,0))
+    canvas.paste(output, (256,0))
+    canvas.paste(clean, (512,0))
 
-    canvas.save(os.path.join(save_dir, name))
+    canvas.save(os.path.join(compare_folder, name))
 
-    print("Saved comparison:", name)
+print("Comparisons saved.")
