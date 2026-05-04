@@ -282,3 +282,5 @@ def main():
     torch.save(model.state_dict(), "enhanced_cnn_dehaze.pth")
     
     print("\n🎉 Training complete!")
+if __name__ == "__main__":
+    main()
