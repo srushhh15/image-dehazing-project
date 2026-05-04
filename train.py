@@ -1,4 +1,9 @@
 import torch
+import torch.multiprocessing as mp
+mp.set_start_method('fork', force=True)
+
+torch.backends.cudnn.benchmark = True
+
 from torch.utils.data import DataLoader, random_split, Subset
 from torch import optim
 import torch.nn.functional as F
@@ -135,7 +140,6 @@ def main():
         "data/reside/clean"
     )
     
-    # Use full dataset OR subset based on config
     if DATASET_CONFIG["use_full_dataset"]:
         dataset = full_dataset
         print(f"✅ Using FULL dataset: {len(dataset)} images")
@@ -150,29 +154,26 @@ def main():
     
     print(f"📊 Dataset split: Train={train_size}, Val={val_size}")
     
-    # Use batch_size from config
     train_loader = DataLoader(
         train_data,
         batch_size=TRAINING_CONFIG["batch_size"],
         shuffle=True,
-        num_workers=0,
-        pin_memory=True if device == "cuda" else False
+        num_workers=2,
+        pin_memory=True if device == "cuda" else False,
+        persistent_workers=True
     )
     
     val_loader = DataLoader(
         val_data,
         batch_size=TRAINING_CONFIG["batch_size"],
         shuffle=False,
-        num_workers=0,
-        pin_memory=True if device == "cuda" else False
+        num_workers=2,
+        pin_memory=True if device == "cuda" else False,
+        persistent_workers=True
     )
     
     print("🧠 Initializing model...")
     model = EnhancedCNNDehaze().to(device)
-    
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"📈 Model parameters: {total_params:,} (trainable: {trainable_params:,})")
     
     optimizer = optim.Adam(
         model.parameters(),
@@ -188,37 +189,14 @@ def main():
         min_lr=1e-7
     )
     
-    # Use epochs from config
-    epochs = TRAINING_CONFIG["epochs"]
+    epochs = 100   # only change
+    
     best_val_loss = float('inf')
-    patience_counter = 0
-    # ← INCREASED early stopping patience for 200 epochs
-    early_stop_patience = 25
     
-    train_losses = []
-    val_losses = []
-    train_psnrs = []
-    val_psnrs = []
-    train_ssims = []
-    val_ssims = []
-    
-    csv_file = "metrics.csv"
-    with open(csv_file, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "Epoch", "Train Loss", "Train PSNR", "Train SSIM",
-            "Val Loss", "Val PSNR", "Val SSIM", "LR"
-        ])
-    
-    print("🚀 Starting training for 200 epochs...\n")
-    
-    start_time = time.time()
+    print("🚀 Starting training...\n")
     
     for epoch in range(epochs):
-        epoch_start = time.time()
-        
         print(f"Epoch {epoch+1}/{epochs}")
-        print("-" * 60)
         
         train_loss, train_psnr, train_ssim = train_epoch(
             model, train_loader, optimizer, device
@@ -226,113 +204,15 @@ def main():
         
         val_loss, val_psnr, val_ssim = validate(model, val_loader, device)
         
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        train_psnrs.append(train_psnr)
-        val_psnrs.append(val_psnr)
-        train_ssims.append(train_ssim)
-        val_ssims.append(val_ssim)
-        
-        current_lr = optimizer.param_groups[0]['lr']
-        epoch_time = time.time() - epoch_start
-        
         print(f"Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
-        print(f"Train PSNR: {train_psnr:.2f} | Val PSNR: {val_psnr:.2f}")
-        print(f"Train SSIM: {train_ssim:.4f} | Val SSIM: {val_ssim:.4f}")
-        print(f"LR: {current_lr:.2e} | Time: {epoch_time:.1f}s\n")
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "checkpoints/best_model.pth")
             torch.save(model.state_dict(), "best_model.pth")
-            patience_counter = 0
-            print("✅ Best model saved!")
-        else:
-            patience_counter += 1
-        
-        # Save checkpoint every 20 epochs (was 10)
-        if (epoch + 1) % 20 == 0:
-            torch.save(
-                model.state_dict(),
-                f"checkpoints/model_epoch_{epoch+1}.pth"
-            )
-            print(f"✅ Checkpoint saved at epoch {epoch+1}")
-        
-        if patience_counter >= early_stop_patience:
-            print(f"\n⚠️  Early stopping triggered at epoch {epoch+1}")
-            break
         
         scheduler.step(val_loss)
-        
-        with open(csv_file, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                epoch+1, train_loss, train_psnr, train_ssim,
-                val_loss, val_psnr, val_ssim, current_lr
-            ])
-    
-    total_time = time.time() - start_time
-    hours = int(total_time // 3600)
-    minutes = int((total_time % 3600) // 60)
-    
-    torch.save(model.state_dict(), "checkpoints/final_model.pth")
-    torch.save(model.state_dict(), "enhanced_cnn_dehaze.pth")
-    
-    print("\n📊 Plotting results...")
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    
-    axes[0, 0].plot(train_losses, label="Train Loss", marker='o', markersize=3)
-    axes[0, 0].plot(val_losses, label="Val Loss", marker='s', markersize=3)
-    axes[0, 0].set_title("Loss Curve")
-    axes[0, 0].set_xlabel("Epoch")
-    axes[0, 0].set_ylabel("Loss")
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-    
-    axes[0, 1].plot(train_psnrs, label="Train PSNR", marker='o', markersize=3)
-    axes[0, 1].plot(val_psnrs, label="Val PSNR", marker='s', markersize=3)
-    axes[0, 1].set_title("PSNR Curve")
-    axes[0, 1].set_xlabel("Epoch")
-    axes[0, 1].set_ylabel("PSNR (dB)")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
-    
-    axes[1, 0].plot(train_ssims, label="Train SSIM", marker='o', markersize=3)
-    axes[1, 0].plot(val_ssims, label="Val SSIM", marker='s', markersize=3)
-    axes[1, 0].set_title("SSIM Curve")
-    axes[1, 0].set_xlabel("Epoch")
-    axes[1, 0].set_ylabel("SSIM")
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3)
-    
-    axes[1, 1].plot(train_losses, label="Train", marker='o', markersize=3)
-    axes[1, 1].plot(val_losses, label="Validation", marker='s', markersize=3)
-    axes[1, 1].set_title("Overall Loss Comparison")
-    axes[1, 1].set_xlabel("Epoch")
-    axes[1, 1].set_ylabel("Loss")
-    axes[1, 1].legend()
-    axes[1, 1].grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig("training_results.png", dpi=150, bbox_inches='tight')
-    print("✅ Results saved to training_results.png")
-    
-    plt.figure()
-    plt.plot(train_losses, label="Train")
-    plt.plot(val_losses, label="Validation")
-    plt.legend()
-    plt.title("Loss Curve")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.savefig("loss_graph.png")
-    
-    print("\n" + "="*60)
+
     print("🎉 Training complete!")
-    print(f"📈 Best validation loss: {best_val_loss:.6f}")
-    print(f"📈 Final validation PSNR: {val_psnr:.2f} dB")
-    print(f"📈 Final validation SSIM: {val_ssim:.4f}")
-    print(f"⏱️  Total training time: {hours}h {minutes}m")
-    print("="*60)
 
 
 if __name__ == "__main__":
