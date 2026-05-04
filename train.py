@@ -175,6 +175,10 @@ def main():
     print("🧠 Initializing model...")
     model = EnhancedCNNDehaze().to(device)
     
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"📈 Model parameters: {total_params:,} (trainable: {trainable_params:,})")
+    
     optimizer = optim.Adam(
         model.parameters(),
         lr=1e-4,
@@ -189,14 +193,36 @@ def main():
         min_lr=1e-7
     )
     
-    epochs = 100   # only change
+    epochs = 25   # 🔥 ONLY CHANGE
     
     best_val_loss = float('inf')
+    patience_counter = 0
+    early_stop_patience = 25
     
-    print("🚀 Starting training...\n")
+    train_losses = []
+    val_losses = []
+    train_psnrs = []
+    val_psnrs = []
+    train_ssims = []
+    val_ssims = []
+    
+    csv_file = "metrics.csv"
+    with open(csv_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Epoch", "Train Loss", "Train PSNR", "Train SSIM",
+            "Val Loss", "Val PSNR", "Val SSIM", "LR"
+        ])
+    
+    print("🚀 Starting training for 25 epochs...\n")
+    
+    start_time = time.time()
     
     for epoch in range(epochs):
+        epoch_start = time.time()
+        
         print(f"Epoch {epoch+1}/{epochs}")
+        print("-" * 60)
         
         train_loss, train_psnr, train_ssim = train_epoch(
             model, train_loader, optimizer, device
@@ -204,16 +230,55 @@ def main():
         
         val_loss, val_psnr, val_ssim = validate(model, val_loader, device)
         
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_psnrs.append(train_psnr)
+        val_psnrs.append(val_psnr)
+        train_ssims.append(train_ssim)
+        val_ssims.append(val_ssim)
+        
+        current_lr = optimizer.param_groups[0]['lr']
+        epoch_time = time.time() - epoch_start
+        
         print(f"Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
+        print(f"Train PSNR: {train_psnr:.2f} | Val PSNR: {val_psnr:.2f}")
+        print(f"Train SSIM: {train_ssim:.4f} | Val SSIM: {val_ssim:.4f}")
+        print(f"LR: {current_lr:.2e} | Time: {epoch_time:.1f}s\n")
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            torch.save(model.state_dict(), "checkpoints/best_model.pth")
             torch.save(model.state_dict(), "best_model.pth")
+            patience_counter = 0
+            print("✅ Best model saved!")
+        else:
+            patience_counter += 1
+        
+        if (epoch + 1) % 20 == 0:
+            torch.save(
+                model.state_dict(),
+                f"checkpoints/model_epoch_{epoch+1}.pth"
+            )
+            print(f"✅ Checkpoint saved at epoch {epoch+1}")
+        
+        if patience_counter >= early_stop_patience:
+            print(f"\n⚠️  Early stopping triggered at epoch {epoch+1}")
+            break
         
         scheduler.step(val_loss)
-
-    print("🎉 Training complete!")
-
-
-if __name__ == "__main__":
-    main()
+        
+        with open(csv_file, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                epoch+1, train_loss, train_psnr, train_ssim,
+                val_loss, val_psnr, val_ssim, current_lr
+            ])
+    
+    total_time = time.time() - start_time
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
+    
+    torch.save(model.state_dict(), "checkpoints/final_model.pth")
+    torch.save(model.state_dict(), "enhanced_cnn_dehaze.pth")
+    
+    print("\n🎉 Training complete!")
