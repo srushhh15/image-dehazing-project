@@ -1,5 +1,5 @@
 # =====================================================
-# CONFIGURATION FILE - 200 EPOCHS FOR FULL DATASET
+# CONFIGURATION FILE - 25 EPOCHS FOR FULL DATASET
 # =====================================================
 
 # Dataset Configuration
@@ -10,8 +10,8 @@ DATASET_CONFIG = {
 
 # Training Configuration  
 TRAINING_CONFIG = {
-    "epochs": 200,             # ← CHANGED TO 200 EPOCHS
-    "batch_size": 16,          # ← Batch size 16
+    "epochs": 25,
+    "batch_size": 16,
 }
 
 # Print Config
