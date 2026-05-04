@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import torch.nn.functional as F
 from pytorch_msssim import ssim
+import csv
 
-from config import DATASET_CONFIG
 from models.cnn_dehaze import EnhancedCNNDehaze
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -19,6 +19,108 @@ def calculate_psnr(pred, target):
         return 100.0
     psnr = 10 * torch.log10(1.0 / mse)
     return psnr.item()
+
+def plot_training_metrics():
+    """Plot training metrics from metrics.csv"""
+    print("\n📊 Generating training metrics plots...")
+    
+    try:
+        # Read CSV file
+        epochs = []
+        train_losses = []
+        val_losses = []
+        train_psnrs = []
+        val_psnrs = []
+        train_ssims = []
+        val_ssims = []
+        
+        with open('metrics.csv', 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                epochs.append(int(row['Epoch']))
+                train_losses.append(float(row['Train Loss']))
+                val_losses.append(float(row['Val Loss']))
+                train_psnrs.append(float(row['Train PSNR']))
+                val_psnrs.append(float(row['Val PSNR']))
+                train_ssims.append(float(row['Train SSIM']))
+                val_ssims.append(float(row['Val SSIM']))
+        
+        # Create comprehensive plots
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        
+        # Plot 1: Loss Curve
+        axes[0, 0].plot(epochs, train_losses, 'b-o', label="Train Loss", linewidth=2, markersize=5)
+        axes[0, 0].plot(epochs, val_losses, 'r-s', label="Val Loss", linewidth=2, markersize=5)
+        axes[0, 0].set_title("Loss Curve", fontsize=14, fontweight='bold')
+        axes[0, 0].set_xlabel("Epoch", fontsize=12)
+        axes[0, 0].set_ylabel("Loss", fontsize=12)
+        axes[0, 0].legend(fontsize=11)
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # Plot 2: PSNR Curve
+        axes[0, 1].plot(epochs, train_psnrs, 'b-o', label="Train PSNR", linewidth=2, markersize=5)
+        axes[0, 1].plot(epochs, val_psnrs, 'r-s', label="Val PSNR", linewidth=2, markersize=5)
+        axes[0, 1].set_title("PSNR Curve (dB)", fontsize=14, fontweight='bold')
+        axes[0, 1].set_xlabel("Epoch", fontsize=12)
+        axes[0, 1].set_ylabel("PSNR (dB)", fontsize=12)
+        axes[0, 1].legend(fontsize=11)
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        # Plot 3: SSIM Curve
+        axes[1, 0].plot(epochs, train_ssims, 'b-o', label="Train SSIM", linewidth=2, markersize=5)
+        axes[1, 0].plot(epochs, val_ssims, 'r-s', label="Val SSIM", linewidth=2, markersize=5)
+        axes[1, 0].set_title("SSIM Curve", fontsize=14, fontweight='bold')
+        axes[1, 0].set_xlabel("Epoch", fontsize=12)
+        axes[1, 0].set_ylabel("SSIM", fontsize=12)
+        axes[1, 0].legend(fontsize=11)
+        axes[1, 0].grid(True, alpha=0.3)
+        
+        # Plot 4: Summary Statistics
+        axes[1, 1].axis('off')
+        summary_text = f"""
+TRAINING SUMMARY
+
+Total Epochs: {len(epochs)}
+
+Best Val Loss: {min(val_losses):.6f}
+Best Val PSNR: {max(val_psnrs):.2f} dB
+Best Val SSIM: {max(val_ssims):.4f}
+
+Final Train Loss: {train_losses[-1]:.6f}
+Final Train PSNR: {train_psnrs[-1]:.2f} dB
+Final Train SSIM: {train_ssims[-1]:.4f}
+
+Final Val Loss: {val_losses[-1]:.6f}
+Final Val PSNR: {val_psnrs[-1]:.2f} dB
+Final Val SSIM: {val_ssims[-1]:.4f}
+        """
+        axes[1, 1].text(0.1, 0.5, summary_text, fontsize=11, family='monospace',
+                       verticalalignment='center', bbox=dict(boxstyle='round', 
+                       facecolor='wheat', alpha=0.5))
+        
+        plt.tight_layout()
+        plt.savefig("training_metrics_detailed.png", dpi=150, bbox_inches='tight')
+        print("✅ Saved: training_metrics_detailed.png")
+        plt.close()
+        
+        # Create simple loss curve
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, train_losses, 'b-o', label="Train Loss", linewidth=2, markersize=5)
+        plt.plot(epochs, val_losses, 'r-s', label="Val Loss", linewidth=2, markersize=5)
+        plt.title("Loss Curve", fontsize=14, fontweight='bold')
+        plt.xlabel("Epoch", fontsize=12)
+        plt.ylabel("Loss", fontsize=12)
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig("loss_curve_detailed.png", dpi=150, bbox_inches='tight')
+        print("✅ Saved: loss_curve_detailed.png")
+        plt.close()
+        
+    except FileNotFoundError:
+        print("⚠️  metrics.csv not found. Skipping training metrics plots.")
+    except Exception as e:
+        print(f"⚠️  Error generating plots: {e}")
 
 def main():
     print("🧠 Loading model...")
@@ -40,23 +142,16 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
     os.makedirs(comparison_folder, exist_ok=True)
     
-    files = sorted(os.listdir(input_folder))
+    # Test on first 10 images (matches train.py)
+    files = sorted(os.listdir(input_folder))[:10]
     
-    # ← UPDATED: Test on ALL images if full dataset, else first 10
-    if DATASET_CONFIG["use_full_dataset"]:
-        test_files = files  # Test ALL images
-        print(f"✅ Testing on FULL dataset: {len(test_files)} images\n")
-    else:
-        test_files = files[:10]  # Test only first 10
-        print(f"✅ Testing on first {len(test_files)} images\n")
-    
-    print(f"🔄 Processing {len(test_files)} images...\n")
+    print(f"\n🔄 Processing {len(files)} images...\n")
     
     total_psnr = 0
     total_ssim = 0
     count = 0
     
-    for name in tqdm(test_files, desc="Dehazing"):
+    for name in tqdm(files, desc="Dehazing"):
         hazy_path = os.path.join(input_folder, name)
         
         hazy_img = Image.open(hazy_path).convert("RGB")
@@ -106,12 +201,14 @@ def main():
     if count > 0:
         avg_psnr = total_psnr / count
         avg_ssim = total_ssim / count
-        print(f"\n✅ Average Test PSNR: {avg_psnr:.2f} dB")
-        print(f"✅ Average Test SSIM: {avg_ssim:.4f}")
-        print(f"✅ Tested on {count} images")
+        print(f"\n✅ Average PSNR: {avg_psnr:.2f} dB")
+        print(f"✅ Average SSIM: {avg_ssim:.4f}")
     
     print(f"✅ Outputs saved to {output_folder}")
     print(f"✅ Comparisons saved to {comparison_folder}")
+    
+    # Generate training metrics plots
+    plot_training_metrics()
 
 if __name__ == "__main__":
     main()
