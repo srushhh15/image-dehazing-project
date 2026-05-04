@@ -1,4 +1,3 @@
-# test.py (UPDATED)
 import torch
 from torchvision import transforms
 from PIL import Image
@@ -8,6 +7,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 from pytorch_msssim import ssim
 
+from config import DATASET_CONFIG
 from models.cnn_dehaze import EnhancedCNNDehaze
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -40,15 +40,23 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
     os.makedirs(comparison_folder, exist_ok=True)
     
-    files = sorted(os.listdir(input_folder))[:10]
+    files = sorted(os.listdir(input_folder))
     
-    print(f"\n🔄 Processing {len(files)} images...\n")
+    # ← UPDATED: Test on ALL images if full dataset, else first 10
+    if DATASET_CONFIG["use_full_dataset"]:
+        test_files = files  # Test ALL images
+        print(f"✅ Testing on FULL dataset: {len(test_files)} images\n")
+    else:
+        test_files = files[:10]  # Test only first 10
+        print(f"✅ Testing on first {len(test_files)} images\n")
+    
+    print(f"🔄 Processing {len(test_files)} images...\n")
     
     total_psnr = 0
     total_ssim = 0
     count = 0
     
-    for name in tqdm(files, desc="Dehazing"):
+    for name in tqdm(test_files, desc="Dehazing"):
         hazy_path = os.path.join(input_folder, name)
         
         hazy_img = Image.open(hazy_path).convert("RGB")
@@ -98,8 +106,9 @@ def main():
     if count > 0:
         avg_psnr = total_psnr / count
         avg_ssim = total_ssim / count
-        print(f"\n✅ Average PSNR: {avg_psnr:.2f} dB")
-        print(f"✅ Average SSIM: {avg_ssim:.4f}")
+        print(f"\n✅ Average Test PSNR: {avg_psnr:.2f} dB")
+        print(f"✅ Average Test SSIM: {avg_ssim:.4f}")
+        print(f"✅ Tested on {count} images")
     
     print(f"✅ Outputs saved to {output_folder}")
     print(f"✅ Comparisons saved to {comparison_folder}")

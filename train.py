@@ -7,9 +7,13 @@ import matplotlib.pyplot as plt
 import csv
 import os
 from tqdm import tqdm
+import time
 
+from config import DATASET_CONFIG, TRAINING_CONFIG, print_config
 from models.cnn_dehaze import EnhancedCNNDehaze
 from utils.dataset import DehazeDataset
+
+print_config()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Using device:", device)
@@ -131,8 +135,13 @@ def main():
         "data/reside/clean"
     )
     
-    # Use subset for testing (change range to use more images)
-    dataset = Subset(full_dataset, list(range(min(50, len(full_dataset)))))
+    # Use full dataset OR subset based on config
+    if DATASET_CONFIG["use_full_dataset"]:
+        dataset = full_dataset
+        print(f"✅ Using FULL dataset: {len(dataset)} images")
+    else:
+        dataset = Subset(full_dataset, list(range(min(DATASET_CONFIG["subset_size"], len(full_dataset)))))
+        print(f"✅ Using SUBSET: {len(dataset)} images")
     
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
@@ -141,9 +150,10 @@ def main():
     
     print(f"📊 Dataset split: Train={train_size}, Val={val_size}")
     
+    # Use batch_size from config
     train_loader = DataLoader(
         train_data,
-        batch_size=4,
+        batch_size=TRAINING_CONFIG["batch_size"],
         shuffle=True,
         num_workers=0,
         pin_memory=True if device == "cuda" else False
@@ -151,7 +161,7 @@ def main():
     
     val_loader = DataLoader(
         val_data,
-        batch_size=4,
+        batch_size=TRAINING_CONFIG["batch_size"],
         shuffle=False,
         num_workers=0,
         pin_memory=True if device == "cuda" else False
@@ -178,10 +188,12 @@ def main():
         min_lr=1e-7
     )
     
-    epochs = 10
+    # Use epochs from config
+    epochs = TRAINING_CONFIG["epochs"]
     best_val_loss = float('inf')
     patience_counter = 0
-    early_stop_patience = 10
+    # ← INCREASED early stopping patience for 200 epochs
+    early_stop_patience = 25
     
     train_losses = []
     val_losses = []
@@ -198,9 +210,13 @@ def main():
             "Val Loss", "Val PSNR", "Val SSIM", "LR"
         ])
     
-    print("🚀 Starting training...\n")
+    print("🚀 Starting training for 200 epochs...\n")
+    
+    start_time = time.time()
     
     for epoch in range(epochs):
+        epoch_start = time.time()
+        
         print(f"Epoch {epoch+1}/{epochs}")
         print("-" * 60)
         
@@ -218,11 +234,12 @@ def main():
         val_ssims.append(val_ssim)
         
         current_lr = optimizer.param_groups[0]['lr']
+        epoch_time = time.time() - epoch_start
         
         print(f"Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
         print(f"Train PSNR: {train_psnr:.2f} | Val PSNR: {val_psnr:.2f}")
         print(f"Train SSIM: {train_ssim:.4f} | Val SSIM: {val_ssim:.4f}")
-        print(f"LR: {current_lr:.2e}\n")
+        print(f"LR: {current_lr:.2e} | Time: {epoch_time:.1f}s\n")
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -232,6 +249,14 @@ def main():
             print("✅ Best model saved!")
         else:
             patience_counter += 1
+        
+        # Save checkpoint every 20 epochs (was 10)
+        if (epoch + 1) % 20 == 0:
+            torch.save(
+                model.state_dict(),
+                f"checkpoints/model_epoch_{epoch+1}.pth"
+            )
+            print(f"✅ Checkpoint saved at epoch {epoch+1}")
         
         if patience_counter >= early_stop_patience:
             print(f"\n⚠️  Early stopping triggered at epoch {epoch+1}")
@@ -245,6 +270,10 @@ def main():
                 epoch+1, train_loss, train_psnr, train_ssim,
                 val_loss, val_psnr, val_ssim, current_lr
             ])
+    
+    total_time = time.time() - start_time
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
     
     torch.save(model.state_dict(), "checkpoints/final_model.pth")
     torch.save(model.state_dict(), "enhanced_cnn_dehaze.pth")
@@ -302,6 +331,7 @@ def main():
     print(f"📈 Best validation loss: {best_val_loss:.6f}")
     print(f"📈 Final validation PSNR: {val_psnr:.2f} dB")
     print(f"📈 Final validation SSIM: {val_ssim:.4f}")
+    print(f"⏱️  Total training time: {hours}h {minutes}m")
     print("="*60)
 
 
