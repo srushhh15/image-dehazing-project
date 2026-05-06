@@ -129,6 +129,7 @@ def main():
     model.eval()
     print("✅ Model loaded!")
     
+    # ← UPDATED: Resize all images to 256×256 for consistent display
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.ToTensor(),
@@ -154,7 +155,10 @@ def main():
     for name in tqdm(files, desc="Dehazing"):
         hazy_path = os.path.join(input_folder, name)
         
+        # ← UPDATED: Load and resize hazy image to 256×256
         hazy_img = Image.open(hazy_path).convert("RGB")
+        hazy_img_resized = hazy_img.resize((256, 256), Image.Resampling.LANCZOS)
+        
         x = transform(hazy_img).unsqueeze(0).to(device)
         
         with torch.no_grad():
@@ -170,7 +174,10 @@ def main():
         clean_path = os.path.join(clean_folder, clean_name)
         
         if os.path.exists(clean_path):
+            # ← UPDATED: Load and resize clean image to 256×256
             clean_img = Image.open(clean_path).convert("RGB")
+            clean_img_resized = clean_img.resize((256, 256), Image.Resampling.LANCZOS)
+            
             clean_tensor = transform(clean_img).unsqueeze(0).to(device)
             
             psnr = calculate_psnr(y_clamped, clean_tensor)
@@ -180,18 +187,19 @@ def main():
             total_ssim += ssim_val
             count += 1
             
-            # Save comparison
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-            axes[0].imshow(hazy_img)
-            axes[0].set_title("Hazy")
+            # ← UPDATED: Save comparison with all images same size (256×256)
+            fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+            
+            axes[0].imshow(hazy_img_resized)
+            axes[0].set_title("Hazy", fontsize=12, fontweight='bold')
             axes[0].axis('off')
             
             axes[1].imshow(out_img)
-            axes[1].set_title(f"Dehazed (PSNR: {psnr:.2f})")
+            axes[1].set_title(f"Dehazed (PSNR: {psnr:.2f})", fontsize=12, fontweight='bold')
             axes[1].axis('off')
             
-            axes[2].imshow(clean_img)
-            axes[2].set_title("Ground Truth")
+            axes[2].imshow(clean_img_resized)
+            axes[2].set_title("Ground Truth", fontsize=12, fontweight='bold')
             axes[2].axis('off')
             
             plt.tight_layout()
